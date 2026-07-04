@@ -1,0 +1,134 @@
+name: Score PR - Python
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - main
+      - participant-start
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout original repo
+        uses: actions/checkout@v4
+        with:
+          path: original
+
+      - name: Parse baseline from SCAN-RESULTS.md
+        id: baseline
+        run: |
+          cd original
+          baseline=$(python3 scripts/parse-baseline.py SCAN-RESULTS.md)
+          echo "count=$baseline" >> $GITHUB_OUTPUT
+          echo "📊 Baseline: $baseline vulnerabilities"
+
+      - name: Checkout PR fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          path: fork
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit on fork
+        run: |
+          cd fork
+          pip install -r requirements.txt > /dev/null 2>&1 || true
+          pip-audit -r requirements.txt --format json > audit-report.json 2>&1 || true
+
+      - name: Parse current vulnerabilities
+        id: current
+        run: |
+          cd fork
+          python3 << 'EOF'
+          import json
+
+          with open('audit-report.json', 'r') as f:
+              data = json.load(f)
+
+          vulnerabilities = data.get('vulnerabilities', [])
+
+          critical = 0
+          high = 0
+
+          for vuln in vulnerabilities:
+              severity = vuln.get('vulnerability', {}).get('severity', 'unknown').lower()
+              if severity == 'critical':
+                  critical += 1
+              elif severity == 'high':
+                  high += 1
+
+          current_count = critical + high
+
+          with open('$GITHUB_OUTPUT', 'a') as f:
+              f.write(f"count={current_count}\n")
+          EOF
+
+      - name: Calculate score
+        id: score
+        run: |
+          baseline=${{ steps.baseline.outputs.count }}
+          current=${{ steps.current.outputs.count }}
+          score=$((baseline - current))
+          echo "score=$score" >> $GITHUB_OUTPUT
+          echo "📈 Score: $score vulnerabilities fixed"
+
+      - name: Get current timestamp
+        id: timestamp
+        run: |
+          ts=$(date -u +'%Y-%m-%dT%H:%M:%S.%N' | sed 's/[0-9]\{6\}Z$/Z/')Z
+          echo "ts=$ts" >> $GITHUB_OUTPUT
+
+      - name: Push to leaderboard
+        run: |
+          cd original
+          python3 scripts/score-and-leaderboard.py \
+            --repo-name verademo-python \
+            --username ${{ github.event.pull_request.user.login }} \
+            --baseline-count ${{ steps.baseline.outputs.count }} \
+            --current-count ${{ steps.current.outputs.count }} \
+            --timestamp "${{ steps.timestamp.outputs.ts }}" \
+            --leaderboard-repo veracode-wad26/leaderboard \
+            --github-token ${{ secrets.LEADERBOARD_TOKEN }}
+        env:
+          LEADERBOARD_TOKEN: ${{ secrets.LEADERBOARD_TOKEN }}
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const baseline = ${{ steps.baseline.outputs.count }};
+            const current = ${{ steps.current.outputs.count }};
+            const score = ${{ steps.score.outputs.score }};
+            const timestamp = "${{ steps.timestamp.outputs.ts }}";
+
+            let status = '❌';
+            if (current === 0) status = '✅';
+            else if (score > 0) status = '🟡';
+
+            const body = `${status} **Scoring Update**
+
+| Metric | Value |
+|--------|-------|
+| Baseline | ${baseline} vulnerabilities |
+| Current | ${current} vulnerabilities |
+| Fixed | ${score} vulnerabilities |
+| Timestamp | ${timestamp} |
+
+Run \`pip-audit -r requirements.txt\` locally to see details.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
