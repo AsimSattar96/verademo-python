@@ -78,7 +78,7 @@ def push_to_leaderboard(event, repo_name, alias, timestamp, leaderboard_repo, gi
         subprocess.run(['git', 'config', '--global', 'user.name', 'wad-scorer'], check=True)
         subprocess.run(['git', 'config', '--global', 'user.email', 'wad@veracode.com'], check=True)
 
-        # Clone with auth
+        # Clone with auth using token in URL
         clone_url = f"https://x-access-token:{github_token}@github.com/{leaderboard_repo}.git"
         subprocess.run(['git', 'clone', clone_url, tmpdir], check=True)
 
@@ -98,6 +98,10 @@ def push_to_leaderboard(event, repo_name, alias, timestamp, leaderboard_repo, gi
             ['git', 'commit', '-m', f"Score: {alias} - {event['score']} vulns fixed"],
             check=True
         )
+
+        # Update remote URL with token for push
+        push_url = f"https://x-access-token:{github_token}@github.com/{leaderboard_repo}.git"
+        subprocess.run(['git', 'remote', 'set-url', 'origin', push_url], check=True)
         subprocess.run(['git', 'push'], check=True)
 
 
