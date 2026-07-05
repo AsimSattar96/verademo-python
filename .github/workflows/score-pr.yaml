@@ -59,10 +59,18 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit on fork
+        id: audit
         run: |
           cd fork
-          pip-audit -r requirements.txt --format json > audit-report.json 2>&1 || true
-          echo "=== audit-report.json ===" && head -20 audit-report.json
+          if [ ! -f requirements.txt ]; then
+            echo "❌ requirements.txt not found in fork"
+            exit 1
+          fi
+          pip-audit -r requirements.txt --format json > audit-report.json
+          if [ ! -s audit-report.json ]; then
+            echo "❌ pip-audit produced empty output"
+            exit 1
+          fi
 
       - name: Parse current vulnerabilities
         id: current
@@ -74,12 +82,15 @@ jobs:
 
           try:
               with open('audit-report.json', 'r') as f:
-                  data = json.load(f)
-          except (FileNotFoundError, json.JSONDecodeError) as e:
+                  content = f.read().strip()
+                  if not content:
+                      raise ValueError("Empty audit report")
+                  data = json.loads(content)
+          except Exception as e:
               print(f"Error reading audit report: {e}")
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
                   f.write("count=0\n")
-              exit()
+              exit(1)
 
           vulnerabilities = data.get('vulnerabilities', [])
 
