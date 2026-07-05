@@ -62,6 +62,7 @@ jobs:
         run: |
           cd fork
           pip-audit -r requirements.txt --format json > audit-report.json 2>&1 || true
+          echo "=== audit-report.json ===" && head -20 audit-report.json
 
       - name: Parse current vulnerabilities
         id: current
@@ -69,9 +70,16 @@ jobs:
           cd fork
           python3 << 'EOF'
           import json
+          import os
 
-          with open('audit-report.json', 'r') as f:
-              data = json.load(f)
+          try:
+              with open('audit-report.json', 'r') as f:
+                  data = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError) as e:
+              print(f"Error reading audit report: {e}")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("count=0\n")
+              exit()
 
           vulnerabilities = data.get('vulnerabilities', [])
 
@@ -87,7 +95,6 @@ jobs:
 
           current_count = critical + high
 
-          import os
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"count={current_count}\n")
           print(f"Current: {current_count} vulnerabilities")
