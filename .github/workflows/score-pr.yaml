@@ -92,23 +92,37 @@ jobs:
                   f.write("count=0\n")
               exit(1)
 
+          print(f"DEBUG: Top-level keys: {list(data.keys())}")
+
           vulnerabilities = data.get('vulnerabilities', [])
+          print(f"DEBUG: Found {len(vulnerabilities)} vulnerabilities")
+
+          if vulnerabilities:
+              print(f"DEBUG: First vuln keys: {list(vulnerabilities[0].keys())}")
 
           critical = 0
           high = 0
 
           for vuln in vulnerabilities:
-              severity = vuln.get('vulnerability', {}).get('severity', 'unknown').lower()
-              if severity == 'critical':
-                  critical += 1
-              elif severity == 'high':
-                  high += 1
+              # Try different paths for severity
+              severity = None
+              if 'vulnerability' in vuln and isinstance(vuln['vulnerability'], dict):
+                  severity = vuln['vulnerability'].get('severity', 'unknown')
+              elif 'severity' in vuln:
+                  severity = vuln.get('severity', 'unknown')
+
+              if severity:
+                  severity = severity.lower()
+                  if severity == 'critical':
+                      critical += 1
+                  elif severity == 'high':
+                      high += 1
 
           current_count = critical + high
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f"count={current_count}\n")
-          print(f"Current: {current_count} vulnerabilities")
+          print(f"Current: {current_count} vulnerabilities (critical={critical}, high={high})")
           EOF
 
       - name: Calculate score
