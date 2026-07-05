@@ -66,9 +66,9 @@ jobs:
             echo "❌ requirements.txt not found in fork"
             exit 1
           fi
-          pip-audit -r requirements.txt --format json > audit-report.json || true
+          pip-audit -r requirements.txt --format json 2>&1 | grep -o '{.*}' > audit-report.json || true
           if [ ! -s audit-report.json ]; then
-            echo "❌ pip-audit produced empty output"
+            echo "❌ pip-audit produced no JSON output"
             exit 1
           fi
 
@@ -92,37 +92,20 @@ jobs:
                   f.write("count=0\n")
               exit(1)
 
-          print(f"DEBUG: Top-level keys: {list(data.keys())}")
+          count = 0
 
-          vulnerabilities = data.get('vulnerabilities', [])
-          print(f"DEBUG: Found {len(vulnerabilities)} vulnerabilities")
+          # pip-audit JSON has 'dependencies' with nested 'vulns' (not 'vulnerabilities')
+          dependencies = data.get('dependencies', [])
 
-          if vulnerabilities:
-              print(f"DEBUG: First vuln keys: {list(vulnerabilities[0].keys())}")
-
-          critical = 0
-          high = 0
-
-          for vuln in vulnerabilities:
-              # Try different paths for severity
-              severity = None
-              if 'vulnerability' in vuln and isinstance(vuln['vulnerability'], dict):
-                  severity = vuln['vulnerability'].get('severity', 'unknown')
-              elif 'severity' in vuln:
-                  severity = vuln.get('severity', 'unknown')
-
-              if severity:
-                  severity = severity.lower()
-                  if severity == 'critical':
-                      critical += 1
-                  elif severity == 'high':
-                      high += 1
-
-          current_count = critical + high
+          for dep in dependencies:
+              if not isinstance(dep, dict):
+                  continue
+              vulns = dep.get('vulns', [])
+              count += len(vulns)
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"count={current_count}\n")
-          print(f"Current: {current_count} vulnerabilities (critical={critical}, high={high})")
+              f.write(f"count={count}\n")
+          print(f"Current: {count} vulnerabilities")
           EOF
 
       - name: Calculate score
