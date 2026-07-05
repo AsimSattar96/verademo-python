@@ -14,7 +14,10 @@ import sys
 
 
 def parse_pip_baseline(file_path):
-    """Parse pip-audit SCAN-RESULTS.md and count critical + high vulnerabilities."""
+    """Parse pip-audit SCAN-RESULTS.md and count vulnerabilities from JSON."""
+    import json
+    import re
+
     try:
         with open(file_path, 'r') as f:
             content = f.read()
@@ -22,30 +25,24 @@ def parse_pip_baseline(file_path):
         print(f"❌ Could not find {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    critical_count = 0
-    high_count = 0
+    # Extract JSON from markdown code block
+    match = re.search(r'```json\s*\n(.*?)\n```', content, re.DOTALL)
+    if not match:
+        print(f"❌ Could not find JSON in {file_path}", file=sys.stderr)
+        sys.exit(1)
 
-    # Parse the tabular format: each row with CVE/PYSEC has severity
-    # Lines look like: "django                4.2.13    PYSEC-2024-58       4.2.14,5.0.7"
-    # We need to look for severity indicators in the line
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError as e:
+        print(f"❌ Failed to parse JSON: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    lines = content.split('\n')
-    for line in lines:
-        line_lower = line.lower()
+    count = 0
+    for dep in data.get('dependencies', []):
+        vulns = dep.get('vulns', [])
+        count += len(vulns)
 
-        # Count each vulnerability entry (CVE/PYSEC ID line)
-        if 'pysec-' in line_lower or 'cve-' in line_lower:
-            # Check for severity in the line
-            if 'critical' in line_lower:
-                critical_count += 1
-            elif 'high' in line_lower:
-                high_count += 1
-            else:
-                # If no severity marker, assume high (conservative)
-                high_count += 1
-
-    total = critical_count + high_count
-    return total
+    return count
 
 
 if __name__ == '__main__':
