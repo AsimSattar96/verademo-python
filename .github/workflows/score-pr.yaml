@@ -3,13 +3,13 @@ name: Score PR - Python
 # ⚠️  SECURITY WARNING: This workflow uses pull_request_target
 # This runs with access to LEADERBOARD_TOKEN secret in the original repo's context.
 # This is safe ONLY because:
-# 1. We do NOT install fork dependencies (npm install, pip install, etc.)
+# 1. We do NOT install fork dependencies (pip install, etc.)
 # 2. We do NOT execute fork code (scripts, setup.py, build files)
-# 3. We only run static analysis tools on manifests (npm audit, pip-audit, dependency-check)
+# 3. We only run static analysis tools on manifests
 # 4. We only read fork files, never execute them
 #
 # DO NOT change this workflow to:
-# - Run npm install / pip install / mvn build from the fork
+# - Run pip install from the fork
 # - Execute scripts from the fork
 # - Run arbitrary commands with fork inputs
 # This would allow malicious PRs to steal LEADERBOARD_TOKEN.
@@ -35,11 +35,11 @@ jobs:
         with:
           path: original
 
-      - name: Parse baseline from SCAN-RESULTS.md
+      - name: Parse baseline from osv-scanner-baseline.json
         id: baseline
         run: |
           cd original
-          baseline=$(python3 scripts/parse-baseline.py SCAN-RESULTS.md)
+          baseline=$(python3 scripts/parse-baseline.py osv-scanner-baseline.json)
           echo "count=$baseline" >> $GITHUB_OUTPUT
           echo "📊 Baseline: $baseline vulnerabilities"
 
@@ -50,63 +50,38 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           path: fork
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install pip-audit
-        run: pip install pip-audit
-
-      - name: Run pip-audit on fork
-        id: audit
+      - name: Install osv-scanner
         run: |
-          cd fork
-          if [ ! -f requirements.txt ]; then
+          mkdir -p /tmp/osv-bin
+          curl -sL https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64 -o /tmp/osv-bin/osv-scanner
+          chmod +x /tmp/osv-bin/osv-scanner
+          echo "/tmp/osv-bin" >> $GITHUB_PATH
+
+      - name: Verify osv-scanner installation
+        run: |
+          osv-scanner --version
+          which osv-scanner
+          echo "✅ osv-scanner is available in PATH"
+
+      - name: Validate requirements.txt exists
+        run: |
+          if [ ! -f fork/requirements.txt ]; then
             echo "❌ requirements.txt not found in fork"
             exit 1
           fi
-          pip-audit -r requirements.txt --format json 2>&1 | grep -o '{.*}' > audit-report.json || true
-          if [ ! -s audit-report.json ]; then
-            echo "❌ pip-audit produced no JSON output"
-            exit 1
-          fi
+
+      - name: Run osv-scanner on fork
+        run: |
+          cd fork
+          echo "📦 Scanning fork..."
+          osv-scanner scan -r -f json --output-file audit-report.json . 2>&1
 
       - name: Parse current vulnerabilities
         id: current
         run: |
-          cd fork
-          python3 << 'EOF'
-          import json
-          import os
-
-          try:
-              with open('audit-report.json', 'r') as f:
-                  content = f.read().strip()
-                  if not content:
-                      raise ValueError("Empty audit report")
-                  data = json.loads(content)
-          except Exception as e:
-              print(f"Error reading audit report: {e}")
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write("count=0\n")
-              exit(1)
-
-          count = 0
-
-          # pip-audit JSON has 'dependencies' with nested 'vulns' (not 'vulnerabilities')
-          dependencies = data.get('dependencies', [])
-
-          for dep in dependencies:
-              if not isinstance(dep, dict):
-                  continue
-              vulns = dep.get('vulns', [])
-              count += len(vulns)
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"count={count}\n")
-          print(f"Current: {count} vulnerabilities")
-          EOF
+          count=$(cd original && python3 scripts/parse-current.py ../fork/audit-report.json)
+          echo "count=$count" >> $GITHUB_OUTPUT
+          echo "Current: $count vulnerabilities (CRITICAL + HIGH)"
 
       - name: Calculate score
         id: score
@@ -151,33 +126,16 @@ jobs:
             --github-token "$LEADERBOARD_TOKEN"
 
       - name: Comment on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const baseline = ${{ steps.baseline.outputs.count }};
-            const current = ${{ steps.current.outputs.count }};
-            const score = ${{ steps.score.outputs.score }};
-            const timestamp = "${{ steps.timestamp.outputs.ts }}";
-
-            let status = '❌';
-            if (current === 0) status = '✅';
-            else if (score > 0) status = '🟡';
-
-            let body = status + ' **Scoring Update**\n\n';
-            body += '| Metric | Value |\n';
-            body += '|--------|-------|\n';
-            body += '| Baseline | ' + baseline + ' vulnerabilities |\n';
-            body += '| Current | ' + current + ' vulnerabilities |\n';
-            body += '| Fixed | ' + score + ' vulnerabilities |\n';
-            body += '| Timestamp | ' + timestamp + ' |\n\n';
-            body += 'Run `pip-audit -r requirements.txt` locally to see details.';
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd original
+          python3 scripts/post-pr-comment.py \
+            --baseline ${{ steps.baseline.outputs.count }} \
+            --current ${{ steps.current.outputs.count }} \
+            --score ${{ steps.score.outputs.score }} \
+            --timestamp "${{ steps.timestamp.outputs.ts }}" \
+            --scanner requirements.txt
 
       - name: Fail check if vulnerabilities remain
         if: ${{ steps.current.outputs.count > 0 }}

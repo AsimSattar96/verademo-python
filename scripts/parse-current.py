@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Parses osv-scanner-baseline.json to extract baseline vulnerability count (CRITICAL + HIGH).
+Parses OSV Scanner JSON report to count current CRITICAL + HIGH vulnerabilities.
 
 Usage:
-  python3 scripts/parse-baseline.py ../osv-scanner-baseline.json
+  python3 scripts/parse-current.py <audit-report.json>
 
 Returns: integer count of CRITICAL + HIGH vulnerabilities
 """
@@ -12,13 +12,17 @@ import sys
 import json
 
 
-def parse_osv_baseline(file_path):
-    """Parse osv-scanner-baseline.json and count CRITICAL + HIGH vulnerabilities."""
+def parse_current(report_path):
+    """Parse OSV Scanner JSON and count CRITICAL + HIGH vulnerabilities."""
     try:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
+        with open(report_path, 'r') as f:
+            content = f.read().strip()
+            if not content:
+                print(f"❌ Report file is empty: {report_path}", file=sys.stderr)
+                sys.exit(1)
+            data = json.loads(content)
     except FileNotFoundError:
-        print(f"❌ Could not find {file_path}", file=sys.stderr)
+        print(f"❌ Could not find {report_path}", file=sys.stderr)
         sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"❌ Failed to parse JSON: {e}", file=sys.stderr)
@@ -42,9 +46,9 @@ def parse_osv_baseline(file_path):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python3 scripts/parse-baseline.py <osv-scanner-baseline.json>", file=sys.stderr)
+        print("Usage: python3 scripts/parse-current.py <audit-report.json>", file=sys.stderr)
         sys.exit(1)
 
-    file_path = sys.argv[1]
-    baseline = parse_osv_baseline(file_path)
-    print(baseline)
+    report_path = sys.argv[1]
+    count = parse_current(report_path)
+    print(count)
