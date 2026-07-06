@@ -178,3 +178,9 @@ jobs:
               repo: context.repo.repo,
               body: body
             });
+
+      - name: Fail check if vulnerabilities remain
+        if: ${{ steps.current.outputs.count > 0 }}
+        run: |
+          echo "❌ PR still has ${{ steps.current.outputs.count }} vulnerabilities remaining"
+          exit 1
