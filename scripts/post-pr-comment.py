@@ -19,7 +19,7 @@ import subprocess
 import argparse
 
 
-def post_comment(baseline, current, score, timestamp, scanner):
+def post_comment(baseline, current, score, timestamp, scanner, pr_number):
     """Generate and post comment to PR using gh CLI."""
     status = '❌'
     if current == 0:
@@ -40,7 +40,7 @@ Run `osv-scanner --lockfile={scanner}` locally to see details."""
 
     try:
         result = subprocess.run(
-            ['gh', 'pr', 'comment', '--body', body],
+            ['gh', 'pr', 'comment', str(pr_number), '--body', body],
             capture_output=True,
             text=True,
             check=False
@@ -63,7 +63,8 @@ if __name__ == '__main__':
     parser.add_argument('--score', type=int, required=True, help='Vulnerabilities fixed')
     parser.add_argument('--timestamp', required=True, help='ISO timestamp of scan')
     parser.add_argument('--scanner', required=True, help='Scanner lockfile name (e.g., package-lock.json)')
+    parser.add_argument('--pr-number', type=int, required=True, help='GitHub PR number')
 
     args = parser.parse_args()
 
-    post_comment(args.baseline, args.current, args.score, args.timestamp, args.scanner)
+    post_comment(args.baseline, args.current, args.score, args.timestamp, args.scanner, args.pr_number)
