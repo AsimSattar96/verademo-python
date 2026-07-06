@@ -74,7 +74,7 @@ jobs:
         run: |
           cd fork
           echo "📦 Scanning fork..."
-          osv-scanner scan -r -f json --output-file audit-report.json . 2>&1
+          osv-scanner scan -r -f json --output-file audit-report.json . 2>&1 || true
 
       - name: Parse current vulnerabilities
         id: current
