@@ -8,7 +8,7 @@ Usage:
     --current <count> \
     --score <count> \
     --timestamp <iso-timestamp> \
-    --scanner <scanner-name>
+    --pr-number <pr-number>
 
 Environment variables:
   GH_TOKEN - GitHub token (required for gh CLI)
@@ -19,7 +19,7 @@ import subprocess
 import argparse
 
 
-def post_comment(baseline, current, score, timestamp, scanner, pr_number):
+def post_comment(baseline, current, score, timestamp, pr_number):
     """Generate and post comment to PR using gh CLI."""
     status = '❌'
     if current == 0:
@@ -36,7 +36,7 @@ def post_comment(baseline, current, score, timestamp, scanner, pr_number):
 | Fixed | {score} vulnerabilities |
 | Timestamp | {timestamp} |
 
-Run `osv-scanner --lockfile={scanner}` locally to see details."""
+Run `osv-scanner scan -r .` locally to see details."""
 
     try:
         result = subprocess.run(
@@ -62,9 +62,8 @@ if __name__ == '__main__':
     parser.add_argument('--current', type=int, required=True, help='Current vulnerability count')
     parser.add_argument('--score', type=int, required=True, help='Vulnerabilities fixed')
     parser.add_argument('--timestamp', required=True, help='ISO timestamp of scan')
-    parser.add_argument('--scanner', required=True, help='Scanner lockfile name (e.g., package-lock.json)')
     parser.add_argument('--pr-number', type=int, required=True, help='GitHub PR number')
 
     args = parser.parse_args()
 
-    post_comment(args.baseline, args.current, args.score, args.timestamp, args.scanner, args.pr_number)
+    post_comment(args.baseline, args.current, args.score, args.timestamp, args.pr_number)
