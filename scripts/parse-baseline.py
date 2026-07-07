@@ -26,16 +26,15 @@ def parse_osv_baseline(file_path):
 
     count = 0
     results = data.get('results', [])
-    if not results:
-        return count
-    packages = results[0].get('packages', [])
 
-    for package in packages:
-        vulns = package.get('vulnerabilities', [])
-        for vuln in vulns:
-            severity = vuln.get('database_specific', {}).get('severity', '')
-            if severity in ('CRITICAL', 'HIGH'):
-                count += 1
+    for result in results:
+        packages = result.get('packages', [])
+        for package in packages:
+            vulns = package.get('vulnerabilities', [])
+            for vuln in vulns:
+                severity = vuln.get('database_specific', {}).get('severity', '')
+                if severity in ('CRITICAL', 'HIGH'):
+                    count += 1
 
     return count
 
