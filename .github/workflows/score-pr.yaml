@@ -74,7 +74,12 @@ jobs:
         run: |
           cd fork
           echo "📦 Scanning fork..."
-          osv-scanner scan -r -f json --output-file audit-report.json . 2>&1 || true
+          osv-scanner scan -r -f json --output-file audit-report.json . 2>&1
+          exit_code=$?
+          if [ $exit_code -gt 1 ]; then
+            echo "❌ osv-scanner failed with exit code $exit_code"
+            exit $exit_code
+          fi
 
       - name: Parse current vulnerabilities
         id: current
