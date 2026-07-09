@@ -10,7 +10,6 @@ moment==0.12.1
 httplib2==0.22.0
 cryptography==48.0.1
 passeo==1.0.5
-ecdsa==0.19.2
 requests==2.33.0
 pyotp==2.9.0
 idna==3.15

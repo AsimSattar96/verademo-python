@@ -10,8 +10,8 @@ import pickle, base64
 import sqlparse
 from email.mime.multipart import MIMEMultipart
 from passeo import passeo
-from ecdsa import SigningKey
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives import hashes
 
 from django.shortcuts import redirect, render
 from django.http import JsonResponse, HttpResponse
@@ -346,11 +346,15 @@ def processRegister(request):
                 return render(request, 'app/register.html')
             else:
                 rand_pass = passeo().generate(10, numbers=True, symbols=True)
-                sk = SigningKey.generate()
-                vk = sk.verifying_key
+                sk = ec.generate_private_key(ec.SECP256R1())
+                vk = sk.public_key()
                 logger.info(type(sk))
-                signature = sk.sign_digest(rand_pass.encode())
-                verified = "True" if vk.verify_digest(signature, rand_pass.encode()) else "False"
+                signature = sk.sign(rand_pass.encode(), ec.ECDSA(hashes.SHA256()))
+                try:
+                    vk.verify(signature, rand_pass.encode(), ec.ECDSA(hashes.SHA256()))
+                    verified = "True"
+                except Exception:
+                    verified = "False"
                 logger.info("Random password: " + rand_pass + ", Verified: " + verified)
                 return render(request, 'app/register-finish.html')
             
